@@ -82,3 +82,38 @@ done
 rm -rf "$temp_dir"
 
 echo "Done."
+
+
+
+#!/bin/bash
+
+# Define the .zshrc file location
+ZSHRC_FILE="$HOME/.zshrc"
+
+# Create or append to the .zshrc file
+echo "Initializing .zshrc file..."
+
+# Add exports
+echo "Exporting environment variables..."
+cat <<EOT >> $ZSHRC_FILE
+
+# Custom environment variables
+export MY_VARIABLE="my_value"
+export ANOTHER_VARIABLE="another_value"
+
+# Custom paths
+export PATH="\$PATH:/usr/local/bin:/custom/path"
+
+# Custom aliases
+alias ll='ls -la'
+alias gs='git status'
+alias py='python3'
+
+EOT
+
+# Source the .zshrc file
+echo "Sourcing the .zshrc file..."
+source $ZSHRC_FILE
+
+echo ".zshrc initialization complete!"
+
