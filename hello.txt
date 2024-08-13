@@ -29,3 +29,56 @@ else
     echo "Failed to move the folder."
     exit 1
 fi
+
+
+
+
+#!/bin/bash
+
+# Check if correct number of arguments are passed
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <url_of_zip_file> <command1> <command2>"
+    exit 1
+fi
+
+# Assign arguments to variables
+zip_url=$1
+command1=$2
+command2=$3
+
+# Define a temporary directory for downloading the ZIP file
+temp_dir=$(mktemp -d)
+
+# Download the ZIP file
+zip_file="$temp_dir/file.zip"
+echo "Downloading $zip_url..."
+curl -L -o "$zip_file" "$zip_url"
+
+# Check if the download was successful
+if [ $? -ne 0 ]; then
+    echo "Failed to download the ZIP file."
+    exit 1
+fi
+
+# Unzip the file
+echo "Unzipping the file..."
+unzip "$zip_file" -d "$temp_dir"
+
+# Check if the unzip was successful
+if [ $? -ne 0 ]; then
+    echo "Failed to unzip the file."
+    exit 1
+fi
+
+# Run the specified commands on each extracted folder
+for folder in "$temp_dir"/*/; do
+    if [ -d "$folder" ]; then
+        echo "Running commands on $folder..."
+        (cd "$folder" && eval "$command1" && eval "$command2")
+    fi
+done
+
+# Clean up
+rm -rf "$temp_dir"
+
+echo "Done."
