@@ -1,119 +1,86 @@
-#!/bin/bash
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
-# Check if correct number of arguments are passed
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <source_folder> <destination_folder>"
-    exit 1
-fi
+import java.io.IOException;
+import java.util.List;
 
-# Assign arguments to variables
-source_folder=$1
-destination_folder=$2
+@RestController
+public class VideoStreamController {
 
-# Check if the source folder exists
-if [ ! -d "$source_folder" ]; then
-    echo "Source folder $source_folder does not exist."
-    exit 1
-fi
+    private final ResourceLoader resourceLoader;
 
-# Create the destination folder if it doesn't exist (including any necessary parent directories)
-mkdir -p "$destination_folder"
+    public VideoStreamController(ResourceLoader resourceLoader) {
+        this.resourceLoader = resourceLoader;
+    }
 
-# Move the folder
-mv "$source_folder" "$destination_folder"
+    @GetMapping(value = "/video/{filename}", produces = "video/mp4")
+    public Mono<ResponseEntity<Resource>> getVideo(
+            @PathVariable String filename,
+            @RequestHeader HttpHeaders headers,
+            ServerWebExchange exchange) {
 
-# Check if the move was successful
-if [ $? -eq 0 ]; then
-    echo "Folder moved successfully from $source_folder to $destination_folder."
-else
-    echo "Failed to move the folder."
-    exit 1
-fi
+        Resource video = resourceLoader.getResource("file:/path/to/videos/" + filename);
 
+        try {
+            if (!video.exists() || !video.isReadable()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found or not readable");
+            }
 
+            long contentLength = video.contentLength();
+            List<HttpHeaders.Range> ranges = headers.getRange();
 
+            // Handle range requests
+            if (ranges.isEmpty()) {
+                return Mono.just(ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                        .body(video));
+            } else {
+                HttpHeaders.Range range = ranges.get(0);
+                long start = range.getRangeStart(contentLength);
+                long end = range.getRangeEnd(contentLength);
 
-#!/bin/bash
+                if (start > end || end >= contentLength) {
+                    throw new ResponseStatusException(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+                            "Invalid Range Header");
+                }
 
-# Check if correct number of arguments are passed
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <url_of_zip_file> <command1> <command2>"
-    exit 1
-fi
+                return Mono.just(ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(end - start + 1))
+                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                        .header(HttpHeaders.CONTENT_RANGE, String.format("bytes %d-%d/%d", start, end, contentLength))
+                        .body(video));
+            }
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Error retrieving video file", ex);
+        }
+    }
 
-# Assign arguments to variables
-zip_url=$1
-command1=$2
-command2=$3
+    // Handle general errors
+    @ExceptionHandler(ResponseStatusException.class)
+    public Mono<ResponseEntity<String>> handleResponseStatusException(ResponseStatusException ex) {
+        return Mono.just(ResponseEntity.status(ex.getStatus())
+                .body(ex.getReason()));
+    }
 
-# Define a temporary directory for downloading the ZIP file
-temp_dir=$(mktemp -d)
-
-# Download the ZIP file
-zip_file="$temp_dir/file.zip"
-echo "Downloading $zip_url..."
-curl -L -o "$zip_file" "$zip_url"
-
-# Check if the download was successful
-if [ $? -ne 0 ]; then
-    echo "Failed to download the ZIP file."
-    exit 1
-fi
-
-# Unzip the file
-echo "Unzipping the file..."
-unzip "$zip_file" -d "$temp_dir"
-
-# Check if the unzip was successful
-if [ $? -ne 0 ]; then
-    echo "Failed to unzip the file."
-    exit 1
-fi
-
-# Run the specified commands on each extracted folder
-for folder in "$temp_dir"/*/; do
-    if [ -d "$folder" ]; then
-        echo "Running commands on $folder..."
-        (cd "$folder" && eval "$command1" && eval "$command2")
-    fi
-done
-
-# Clean up
-rm -rf "$temp_dir"
-
-echo "Done."
-
-
-
-#!/bin/bash
-
-# Define the .zshrc file location
-ZSHRC_FILE="$HOME/.zshrc"
-
-# Create or append to the .zshrc file
-echo "Initializing .zshrc file..."
-
-# Add exports
-echo "Exporting environment variables..."
-cat <<EOT >> $ZSHRC_FILE
-
-# Custom environment variables
-export MY_VARIABLE="my_value"
-export ANOTHER_VARIABLE="another_value"
-
-# Custom paths
-export PATH="\$PATH:/usr/local/bin:/custom/path"
-
-# Custom aliases
-alias ll='ls -la'
-alias gs='git status'
-alias py='python3'
-
-EOT
-
-# Source the .zshrc file
-echo "Sourcing the .zshrc file..."
-source $ZSHRC_FILE
-
-echo ".zshrc initialization complete!"
-
+    // Handle other exceptions
+    @ExceptionHandler(Exception.class)
+    public Mono<ResponseEntity<String>> handleGenericException(Exception ex) {
+        return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("An unexpected error occurred: " + ex.getMessage()));
+    }
+}
