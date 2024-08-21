@@ -1,24 +1,24 @@
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRange;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
-import java.util.List;
 
 @RestController
 public class VideoStreamController {
 
+    private static final long DEFAULT_CHUNK_SIZE = 1024 * 1024 * 2; // 2 MB default chunk size
     private final ResourceLoader resourceLoader;
 
     public VideoStreamController(ResourceLoader resourceLoader) {
@@ -28,8 +28,7 @@ public class VideoStreamController {
     @GetMapping(value = "/video/{filename}", produces = "video/mp4")
     public Mono<ResponseEntity<Resource>> getVideo(
             @PathVariable String filename,
-            @RequestHeader HttpHeaders headers,
-            ServerWebExchange exchange) {
+            @RequestHeader HttpHeaders headers) {
 
         Resource video = resourceLoader.getResource("file:/path/to/videos/" + filename);
 
@@ -39,48 +38,40 @@ public class VideoStreamController {
             }
 
             long contentLength = video.contentLength();
-            List<HttpHeaders.Range> ranges = headers.getRange();
+            String rangeHeader = headers.getFirst(HttpHeaders.RANGE);
+            String lastByteSentHeader = headers.getFirst("Last-Byte-Sent");
 
-            // Handle range requests
-            if (ranges.isEmpty()) {
-                return Mono.just(ResponseEntity.ok()
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
-                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
-                        .body(video));
+            long start;
+            long end;
+
+            if (!StringUtils.hasText(rangeHeader)) {
+                // No Range header, send default chunk
+                start = lastByteSentHeader != null ? Long.parseLong(lastByteSentHeader) + 1 : 0;
+                end = Math.min(start + DEFAULT_CHUNK_SIZE - 1, contentLength - 1);
             } else {
-                HttpHeaders.Range range = ranges.get(0);
-                long start = range.getRangeStart(contentLength);
-                long end = range.getRangeEnd(contentLength);
+                // Process the range request
+                HttpRange range = headers.getRange().get(0);
+                start = range.getRangeStart(contentLength);
+                end = range.getRangeEnd(contentLength);
 
-                if (start > end || end >= contentLength) {
+                if (start >= contentLength || end >= contentLength) {
                     throw new ResponseStatusException(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
-                            "Invalid Range Header");
+                            "Invalid range request");
                 }
-
-                return Mono.just(ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
-                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(end - start + 1))
-                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                        .header(HttpHeaders.CONTENT_RANGE, String.format("bytes %d-%d/%d", start, end, contentLength))
-                        .body(video));
             }
+
+            // Build the response with partial content
+            return Mono.just(ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(end - start + 1))
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + contentLength)
+                    .header("Last-Byte-Sent", String.valueOf(end)) // Custom header to track progress
+                    .body(video));
+
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Error retrieving video file", ex);
         }
-    }
-
-    // Handle general errors
-    @ExceptionHandler(ResponseStatusException.class)
-    public Mono<ResponseEntity<String>> handleResponseStatusException(ResponseStatusException ex) {
-        return Mono.just(ResponseEntity.status(ex.getStatus())
-                .body(ex.getReason()));
-    }
-
-    // Handle other exceptions
-    @ExceptionHandler(Exception.class)
-    public Mono<ResponseEntity<String>> handleGenericException(Exception ex) {
-        return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("An unexpected error occurred: " + ex.getMessage()));
     }
 }
