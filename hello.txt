@@ -1,41 +1,30 @@
-package com.example.streaming;
+import { exec } from 'child_process';
 
-import org.springframework.http.MediaType;
-import org.springframework.http.server.reactive.ServerHttpResponse;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+function getConnectedAndroidDevices(): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+        exec('adb devices', (error, stdout, stderr) => {
+            if (error) {
+                reject(`Error: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                reject(`Error: ${stderr}`);
+                return;
+            }
 
-import java.time.Duration;
+            const lines = stdout.split('\n');
+            const devices = lines.slice(1, -1).map(line => {
+                const [deviceId, state] = line.split('\t');
+                return { deviceId, state };
+            }).filter(device => device.state === 'device');
 
-@Controller
-public class MjpegStreamController {
-
-    private final WebClient webClient;
-
-    public MjpegStreamController(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder
-                .baseUrl("http://localhost:8000") // Your local MJPEG stream
-                .build();
-    }
-
-    @GetMapping(value = "/api/stream", produces = MediaType.IMAGE_JPEG_VALUE)
-    @ResponseBody
-    public Mono<Void> streamMjpeg(ServerHttpResponse response) {
-        response.getHeaders().setContentType(MediaType.parseMediaType("multipart/x-mixed-replace; boundary=--BoundaryString"));
-
-        Flux<byte[]> mjpegStream = webClient.get()
-                .retrieve()
-                .bodyToFlux(byte[].class)
-                .onErrorResume(throwable -> {
-                    System.err.println("Error occurred while streaming MJPEG: " + throwable.getMessage());
-                    return Flux.empty(); // Handle the error by returning an empty Flux
-                })
-                .doOnComplete(() -> System.out.println("Stream completed"));
-
-        return response.writeAndFlushWith(mjpegStream.map(bytes -> Flux.just(response.bufferFactory().wrap(bytes))));
-    }
+            resolve(devices);
+        });
+    });
 }
+
+getConnectedAndroidDevices().then(devices => {
+    console.log('Connected Android Devices:', devices);
+}).catch(error => {
+    console.error(error);
+});
