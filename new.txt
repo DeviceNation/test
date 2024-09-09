@@ -1,0 +1,37 @@
+// Frida script to inject a local image into UIImagePickerController
+Java.perform(function() {
+    console.log("Starting Frida script to inject a local image...");
+
+    // Get the UIImagePickerControllerDelegate class
+    var UIImagePickerControllerDelegate = ObjC.protocols.UIImagePickerControllerDelegate;
+
+    // Hook the didFinishPickingMediaWithInfo method
+    var didFinishPicking = ObjC.classes.UIViewController['- imagePickerController:didFinishPickingMediaWithInfo:'];
+    
+    // Hook the method
+    didFinishPicking.implementation = function(picker, info) {
+        console.log("Intercepted image picker controller");
+
+        // Load a local image from your filesystem (ensure it exists on the device)
+        var localImagePath = "/var/mobile/Media/DCIM/100APPLE/your_image.jpg"; // Modify to the actual path on the device
+        var image = ObjC.classes.UIImage['imageWithContentsOfFile:'](localImagePath);
+
+        if (image) {
+            console.log("Loaded local image from path: " + localImagePath);
+        } else {
+            console.error("Failed to load image from path: " + localImagePath);
+            return this.imagePickerController_didFinishPickingMediaWithInfo_(picker, info);
+        }
+
+        // Create a mutable copy of the info dictionary to modify the image
+        var mutableInfo = info.mutableCopy();
+        
+        // Set the loaded image in the info dictionary for UIImagePickerControllerOriginalImage
+        mutableInfo.setObject_forKey_(image, ObjC.classes.NSString.stringWithUTF8String_("UIImagePickerControllerOriginalImage"));
+
+        // Call the original method with the modified info dictionary
+        return this.imagePickerController_didFinishPickingMediaWithInfo_(picker, mutableInfo);
+    };
+
+    console.log("Image injection setup completed.");
+});
