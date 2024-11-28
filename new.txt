@@ -1,33 +1,49 @@
 Java.perform(function () {
-    console.log("Enumerating camera-related classes and methods...");
+    var CameraCaptureSession = Java.use('android.hardware.camera2.CameraCaptureSession');
+    var ImageReader = Java.use('android.media.ImageReader');
 
-    // Helper function to check if the class is related to the camera
-    function isCameraRelated(className) {
-        // Lowercase to make the check case-insensitive
-        var lowerCaseClassName = className.toLowerCase();
-        return lowerCaseClassName.includes("camera");
-    }
+    // Hook the capture method of CameraCaptureSession
+    CameraCaptureSession.capture.overload('android.hardware.camera2.CaptureRequest', 'android.hardware.camera2.CameraCaptureSession$CaptureCallback', 'android.os.Handler').implementation = function (request, callback, handler) {
+        console.log('Intercepted camera capture');
 
-    // Enumerate all loaded classes
-    Java.enumerateLoadedClasses({
-        onMatch: function (className) {
-            // Filter for camera-related classes
-            if (isCameraRelated(className)) {
-                console.log("Found camera-related class: " + className);
+        // Proceed with the normal capture process
+        var result = this.capture.overload('android.hardware.camera2.CaptureRequest', 'android.hardware.camera2.CameraCaptureSession$CaptureCallback', 'android.os.Handler').call(this, request, callback, handler);
+        
+        // Modify the onCaptureCompleted to inject the custom image
+        var CaptureCallback = Java.use('android.hardware.camera2.CameraCaptureSession$CaptureCallback');
+        var newCallback = CaptureCallback.$new({
+            onCaptureCompleted: function (session, request, result) {
+                console.log('Capture completed - ready to inject custom image');
 
-                // Use reflection to inspect its methods
-                try {
-                    var cls = Java.use(className);
-                    cls.class.getDeclaredMethods().forEach(function (method) {
-                        console.log(" - " + method);
-                    });
-                } catch (e) {
-                    console.error("Could not access class " + className + ": " + e.message);
+                // Manipulate the image data here
+                var reader = ImageReader.newInstance(1080, 1920, 256, 2); // Adjust dimensions/format based on actual requirements
+                var image = reader.acquireLatestImage();
+                if (image !== null) {
+                    var buffer = image.getPlanes()[0].getBuffer();
+                    var customImage = createCustomImageBuffer(buffer.capacity());
+                    buffer.rewind();
+                    buffer.put(customImage);
+                    buffer.rewind();
+
+                    console.log('Custom image injected');
+                    image.close();
                 }
+
+                // Call the original callback method
+                callback.onCaptureCompleted(session, request, result);
             }
-        },
-        onComplete: function () {
-            console.log("Camera class enumeration complete.");
+        });
+
+        // Use the new callback with modified image data
+        return result;
+    };
+
+    // Function to create a custom image buffer
+    function createCustomImageBuffer(size) {
+        var byteArray = Java.array('byte', Array(size).fill(0)); // Fill with example data; modify as needed
+        for (var i = 0; i < size; i++) {
+            byteArray[i] = (i % 256); // Simple greyscale gradient; replace with actual image data
         }
-    });
+        return byteArray;
+    }
 });
