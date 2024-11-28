@@ -1,30 +1,36 @@
-import { exec } from 'child_process';
+Java.perform(function () {
+    var Camera = Java.use('android.hardware.Camera');
 
-function getConnectedAndroidDevices(): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-        exec('adb devices', (error, stdout, stderr) => {
-            if (error) {
-                reject(`Error: ${error.message}`);
-                return;
+    // Hook the setPreviewCallback method to inject our custom callback
+    Camera.setPreviewCallback.implementation = function (callback) {
+        var PreviewCallback = Java.use('android.hardware.Camera$PreviewCallback');
+        var CustomCallback = PreviewCallback.$new({
+            onPreviewFrame: function (data, camera) {
+                console.log('Preview frame received - ready to inject custom image');
+
+                // Manipulate the preview frame data here
+                if (data !== null) {
+                    var customImage = createCustomPreviewData(data.length);
+                    data.overwrite(0, customImage, 0, data.length);
+
+                    console.log('Custom image injected into preview');
+                }
+
+                // Call the original callback method
+                callback.onPreviewFrame(data, camera);
             }
-            if (stderr) {
-                reject(`Error: ${stderr}`);
-                return;
-            }
-
-            const lines = stdout.split('\n');
-            const devices = lines.slice(1, -1).map(line => {
-                const [deviceId, state] = line.split('\t');
-                return { deviceId, state };
-            }).filter(device => device.state === 'device');
-
-            resolve(devices);
         });
-    });
-}
 
-getConnectedAndroidDevices().then(devices => {
-    console.log('Connected Android Devices:', devices);
-}).catch(error => {
-    console.error(error);
+        // Set the custom callback instead of the original
+        this.setPreviewCallback(CustomCallback);
+    };
+
+    // Function to create a custom preview frame data
+    function createCustomPreviewData(size) {
+        var byteArray = Java.array('byte', Array(size).fill(0)); // Fill with example data; modify as needed
+        for (var i = 0; i < size; i++) {
+            byteArray[i] = (i % 256); // Simple greyscale gradient; replace with actual image data
+        }
+        return byteArray;
+    }
 });
