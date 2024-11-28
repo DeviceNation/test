@@ -1,36 +1,23 @@
 Java.perform(function () {
     var Camera = Java.use('android.hardware.Camera');
 
-    // Hook the setPreviewCallback method to inject our custom callback
-    Camera.setPreviewCallback.implementation = function (callback) {
-        var PreviewCallback = Java.use('android.hardware.Camera$PreviewCallback');
-        var CustomCallback = PreviewCallback.$new({
-            onPreviewFrame: function (data, camera) {
-                console.log('Preview frame received - ready to inject custom image');
-
-                // Manipulate the preview frame data here
-                if (data !== null) {
-                    var customImage = createCustomPreviewData(data.length);
-                    data.overwrite(0, customImage, 0, data.length);
-
-                    console.log('Custom image injected into preview');
-                }
-
-                // Call the original callback method
-                callback.onPreviewFrame(data, camera);
-            }
-        });
-
-        // Set the custom callback instead of the original
-        this.setPreviewCallback(CustomCallback);
+    // Enhance logging to check if methods are called
+    Camera.setPreviewCallback.overload('android.hardware.Camera$PreviewCallback').implementation = function (callback) {
+        console.log('setPreviewCallback called');
+        this.setPreviewCallback(callback);
+        console.log('Original setPreviewCallback executed');
     };
 
-    // Function to create a custom preview frame data
-    function createCustomPreviewData(size) {
-        var byteArray = Java.array('byte', Array(size).fill(0)); // Fill with example data; modify as needed
-        for (var i = 0; i < size; i++) {
-            byteArray[i] = (i % 256); // Simple greyscale gradient; replace with actual image data
-        }
-        return byteArray;
-    }
+    Camera.setPreviewCallbackWithBuffer.overload('android.hardware.Camera$PreviewCallback').implementation = function (callback) {
+        console.log('setPreviewCallbackWithBuffer called');
+        this.setPreviewCallbackWithBuffer(callback);
+        console.log('Original setPreviewCallbackWithBuffer executed');
+    };
+
+    // If Camera.startPreview is called without setting callback, it might reset the callbacks
+    Camera.startPreview.implementation = function () {
+        console.log('startPreview called');
+        this.startPreview();
+        console.log('Original startPreview executed');
+    };
 });
