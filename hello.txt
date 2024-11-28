@@ -1,23 +1,25 @@
 Java.perform(function () {
+    // Hook methods from the older Camera API
     var Camera = Java.use('android.hardware.Camera');
-
-    // Enhance logging to check if methods are called
-    Camera.setPreviewCallback.overload('android.hardware.Camera$PreviewCallback').implementation = function (callback) {
-        console.log('setPreviewCallback called');
-        this.setPreviewCallback(callback);
-        console.log('Original setPreviewCallback executed');
+    Camera.open.overload().implementation = function () {
+        console.log('Old Camera API used: Camera.open()');
+        return this.open.apply(this, arguments);
+    };
+    Camera.open.overload('int').implementation = function (cameraId) {
+        console.log('Old Camera API used: Camera.open(int)');
+        return this.open.apply(this, arguments);
     };
 
-    Camera.setPreviewCallbackWithBuffer.overload('android.hardware.Camera$PreviewCallback').implementation = function (callback) {
-        console.log('setPreviewCallbackWithBuffer called');
-        this.setPreviewCallbackWithBuffer(callback);
-        console.log('Original setPreviewCallbackWithBuffer executed');
+    // Hook methods from the newer Camera2 API
+    var CameraManager = Java.use('android.hardware.camera2.CameraManager');
+    CameraManager.openCamera.overload('java.lang.String', 'android.hardware.camera2.CameraDevice$StateCallback', 'android.os.Handler').implementation = function (cameraId, callback, handler) {
+        console.log('Camera2 API used: CameraManager.openCamera()');
+        return this.openCamera.apply(this, arguments);
     };
 
-    // If Camera.startPreview is called without setting callback, it might reset the callbacks
-    Camera.startPreview.implementation = function () {
-        console.log('startPreview called');
-        this.startPreview();
-        console.log('Original startPreview executed');
+    // Hook methods for accessing camera characteristics (common in Camera2 API)
+    CameraManager.getCameraCharacteristics.overload('java.lang.String').implementation = function (cameraId) {
+        console.log('Camera2 API used: CameraManager.getCameraCharacteristics()');
+        return this.getCameraCharacteristics.apply(this, arguments);
     };
 });
