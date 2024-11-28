@@ -1,25 +1,46 @@
 Java.perform(function () {
-    var CameraManager = Java.use('android.hardware.camera2.CameraManager');
-    CameraManager.openCamera.overload('java.lang.String', 'android.hardware.camera2.CameraDevice$StateCallback', 'android.os.Handler').implementation = function (cameraId, callback, handler) {
-        console.log('Camera2 API: openCamera() called with cameraId: ' + cameraId);
-        return this.openCamera(cameraId, callback, handler);
-    };
-
-    var CameraDevice = Java.use('android.hardware.camera2.CameraDevice');
-    CameraDevice.createCaptureSession.overload('java.util.List', 'android.hardware.camera2.CameraCaptureSession$StateCallback', 'android.os.Handler').implementation = function (outputs, callback, handler) {
-        console.log('Camera2 API: createCaptureSession() called');
-        return this.createCaptureSession(outputs, callback, handler);
-    };
-
-    var CaptureRequestBuilder = Java.use('android.hardware.camera2.CaptureRequest$Builder');
-    CaptureRequestBuilder.build.implementation = function () {
-        console.log('Camera2 API: CaptureRequest build() called');
-        return this.build();
-    };
-
     var ImageReader = Java.use('android.media.ImageReader');
+    
     ImageReader.setOnImageAvailableListener.implementation = function (listener, handler) {
-        console.log('ImageReader: setOnImageAvailableListener() called');
-        return this.setOnImageAvailableListener(listener, handler);
+        console.log('setOnImageAvailableListener called');
+
+        // Create a custom listener to replace the original one
+        var Listener = Java.use('android.media.ImageReader$OnImageAvailableListener');
+        var customListener = Listener.$new({
+            onImageAvailable: function (reader) {
+                console.log('Custom listener: New image available');
+
+                // Get the latest image and its buffer to manipulate
+                var image = reader.acquireLatestImage();
+                if (image !== null) {
+                    var buffer = image.getPlanes()[0].getBuffer();
+                    var byteArray = createCustomImageData(buffer.capacity());
+                    
+                    // Overwrite the existing image buffer
+                    buffer.rewind();
+                    buffer.put(byteArray);
+                    buffer.rewind();
+
+                    console.log('Custom image injected');
+                    image.close();
+                }
+
+                // Ensure the original listener's functionality is preserved
+                listener.onImageAvailable(reader);
+            }
+        });
+
+        // Call original method with the custom listener
+        this.setOnImageAvailableListener(customListener, handler);
     };
+
+    // Helper function to create a custom image data
+    function createCustomImageData(size) {
+        var byteArray = Java.array('byte', Array(size).fill(0));
+        for (var i = 0; i < size; i++) {
+            // Replace this with your actual image data filling logic
+            byteArray[i] = (i % 256); // Sample grayscale pattern
+        }
+        return byteArray;
+    }
 });
