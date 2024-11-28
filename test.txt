@@ -1,0 +1,46 @@
+Java.perform(function () {
+    console.log("Attempting to hook camera API usage...");
+
+    // Hook onCreate of all activities to setup hooks as early as possible in each component lifecycle
+    Java.use("android.app.Activity").onCreate.overload("android.os.Bundle").implementation = function (bundle) {
+        console.log("Activity onCreate - setting up hooks...");
+        this.onCreate(bundle);
+        setupCameraHooks();
+    };
+
+    function setupCameraHooks() {
+        // Hook ImageReader to monitor for new instances
+        var ImageReader = Java.use('android.media.ImageReader');
+        ImageReader.newInstance.overload('int', 'int', 'int', 'int').implementation = function (width, height, format, maxImages) {
+            console.log('ImageReader newInstance called: width=' + width + ', height=' + height + ', format=' + format + ', maxImages=' + maxImages);
+            var readerInstance = this.newInstance(width, height, format, maxImages);
+            hookSetOnImageAvailableListener(readerInstance);
+            return readerInstance;
+        };
+    }
+
+    function hookSetOnImageAvailableListener(imageReader) {
+        imageReader.setOnImageAvailableListener.overload('android.media.ImageReader$OnImageAvailableListener', 'android.os.Handler').implementation = function (listener, handler) {
+            console.log('setOnImageAvailableListener called, Listener: ' + listener + ', Handler: ' + handler);
+            if (listener !== null) {
+                var CustomListener = Java.registerClass({
+                    name: 'com.custom.CustomImageAvailableListener',
+                    implements: [Java.use('android.media.ImageReader$OnImageAvailableListener')],
+                    methods: {
+                        onImageAvailable: function (reader) {
+                            console.log('Custom listener triggered');
+                            var image = reader.acquireLatestImage();
+                            if (image !== null) {
+                                console.log('Image acquired, processing...');
+                                image.close(); // Always remember to close the image
+                            }
+                        }
+                    }
+                });
+                this.setOnImageAvailableListener(CustomListener.$new(), handler);
+            } else {
+                this.setOnImageAvailableListener(null, handler);
+            }
+        };
+    }
+});
