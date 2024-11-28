@@ -1,8 +1,15 @@
 Java.perform(function () {
     var ImageReader = Java.use('android.media.ImageReader');
 
+    // Hook ImageReader.newInstance to ensure the ImageReader instances are set up correctly
+    ImageReader.newInstance.overload('int', 'int', 'int', 'int').implementation = function (width, height, format, maxImages) {
+        console.log('ImageReader newInstance called with width: ' + width + ', height: ' + height + ', format: ' + format);
+        var readerInstance = this.newInstance(width, height, format, maxImages);
+        return readerInstance;
+    };
+
     ImageReader.setOnImageAvailableListener.implementation = function (listener, handler) {
-        console.log('setOnImageAvailableListener called');
+        console.log('setOnImageAvailableListener called with listener: ' + listener + ', handler: ' + handler);
 
         var Listener = Java.use('android.media.ImageReader$OnImageAvailableListener');
         var CustomListener = Java.registerClass({
@@ -11,13 +18,14 @@ Java.perform(function () {
             methods: {
                 onImageAvailable: function (reader) {
                     console.log('Custom listener: New image available');
-                    
+
                     var image = reader.acquireLatestImage();
                     if (image === null) {
-                        console.log('No image available.');
+                        console.log('No image available at this time.');
                     } else {
                         try {
-                            var buffer = image.getPlanes()[0].getBuffer();
+                            var planes = image.getPlanes();
+                            var buffer = planes[0].getBuffer();
                             console.log('Image buffer capacity: ' + buffer.capacity());
 
                             var byteArray = createCustomImageData(buffer.capacity());
@@ -33,20 +41,21 @@ Java.perform(function () {
                         }
                     }
 
-                    // Call the original listener
-                    listener.onImageAvailable(reader);
+                    // Fallback to ensure the original listener is always called
+                    if (listener.onImageAvailable) {
+                        listener.onImageAvailable(reader);
+                    }
                 }
             }
         });
 
-        // Replace the original listener with the custom listener
         this.setOnImageAvailableListener(CustomListener.$new(), handler);
     };
 
     function createCustomImageData(size) {
         var byteArray = Java.array('byte', Array(size).fill(0));
         for (var i = 0; i < size; i++) {
-            byteArray[i] = 0xFF; // Fill with white pixels for visibility
+            byteArray[i] = (i % 255); // Simple grayscale gradient
         }
         console.log('Custom image data created with size: ' + size);
         return byteArray;
