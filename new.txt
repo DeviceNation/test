@@ -1,89 +1,33 @@
-if (ObjC.available) {
-    const AVCapturePhoto = ObjC.classes.AVCapturePhoto;
-    const AVCapturePhotoOutput = ObjC.classes.AVCapturePhotoOutput;
-    const NSData = ObjC.classes.NSData;
-    const UIImage = ObjC.classes.UIImage;
-    const NSString = ObjC.classes.NSString;
+Java.perform(function () {
+    console.log("Enumerating camera-related classes and methods...");
 
-    // Base64-encoded image data (replace with your data)
-    const base64ImageData = "your_base64_encoded_image_data";
-    const imageData = NSData.alloc().initWithBase64EncodedString_options_(base64ImageData, 0);
+    // Helper function to check if the class is related to the camera
+    function isCameraRelated(className) {
+        // Lowercase to make the check case-insensitive
+        var lowerCaseClassName = className.toLowerCase();
+        return lowerCaseClassName.includes("camera");
+    }
 
-    // Create UIImage from NSData
-    const uiImage = UIImage.alloc().initWithData_(imageData);
-    const cgImage = uiImage.CGImage();
+    // Enumerate all loaded classes
+    Java.enumerateLoadedClasses({
+        onMatch: function (className) {
+            // Filter for camera-related classes
+            if (isCameraRelated(className)) {
+                console.log("Found camera-related class: " + className);
 
-    // Function to hook into methods
-    function hookMethod(className, selectorName) {
-        const cls = ObjC.classes[className];
-        if (cls && cls.instancesRespondToSelector_(selectorName)) {
-            const method = cls[selectorName];
-            Interceptor.attach(method.implementation, {
-                onEnter: function (args) {
-                    // Store arguments if needed
-                },
-                onLeave: function (retval) {
-                    console.log("Intercepted " + className + " " + selectorName);
-
-                    // Replace the return value based on method
-                    if (selectorName === "- fileDataRepresentation") {
-                        // Return NSData
-                        retval.replace(ptr(imageData.handle));
-                    } else if (selectorName === "- CGImageRepresentation" || selectorName === "- previewCGImageRepresentation") {
-                        // Return CGImageRef
-                        retval.replace(ptr(cgImage));
-                    } else if (selectorName === "- pixelBuffer") {
-                        // Handle CVPixelBufferRef if necessary
-                        // Requires additional implementation
-                    }
+                // Use reflection to inspect its methods
+                try {
+                    var cls = Java.use(className);
+                    cls.class.getDeclaredMethods().forEach(function (method) {
+                        console.log(" - " + method);
+                    });
+                } catch (e) {
+                    console.error("Could not access class " + className + ": " + e.message);
                 }
-            });
-        }
-    }
-
-    // Hook methods in AVCapturePhoto
-    const methodsToHook = [
-        "- fileDataRepresentation",
-        "- CGImageRepresentation",
-        "- previewCGImageRepresentation",
-        "- pixelBuffer",
-        // Add other methods as necessary
-    ];
-
-    methodsToHook.forEach(function (methodName) {
-        hookMethod("AVCapturePhoto", methodName);
-    });
-
-    // Hook the delegate method across all classes
-    for (let className in ObjC.classes) {
-        const cls = ObjC.classes[className];
-
-        if (cls.conformsToProtocol_(ObjC.protocols.AVCapturePhotoCaptureDelegate)) {
-            if (cls.instancesRespondToSelector_("captureOutput:didFinishProcessingPhoto:error:")) {
-                console.log("Hooking into " + className + " captureOutput:didFinishProcessingPhoto:error:");
-
-                const method = cls["- captureOutput:didFinishProcessingPhoto:error:"];
-
-                Interceptor.attach(method.implementation, {
-                    onEnter: function (args) {
-                        // args[0]: self
-                        // args[1]: _cmd
-                        // args[2]: captureOutput
-                        // args[3]: photo
-                        // args[4]: error
-
-                        // Store the 'photo' argument
-                        this.photo = new ObjC.Object(args[3]);
-                    },
-                    onLeave: function (retval) {
-                        console.log("Intercepted " + className + " captureOutput:didFinishProcessingPhoto:error:");
-
-                        // No need to modify retval here since we are intercepting data retrieval methods
-                    }
-                });
             }
+        },
+        onComplete: function () {
+            console.log("Camera class enumeration complete.");
         }
-    }
-} else {
-    console.log("Objective-C runtime is not available!");
-}
+    });
+});
