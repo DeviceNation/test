@@ -11,44 +11,42 @@ Java.perform(function () {
             methods: {
                 onImageAvailable: function (reader) {
                     console.log('Custom listener: New image available');
-
+                    
                     var image = reader.acquireLatestImage();
                     if (image === null) {
-                        console.log('No image available to manipulate.');
-                        listener.onImageAvailable(reader);
-                        return;
+                        console.log('No image available.');
+                    } else {
+                        try {
+                            var buffer = image.getPlanes()[0].getBuffer();
+                            console.log('Image buffer capacity: ' + buffer.capacity());
+
+                            var byteArray = createCustomImageData(buffer.capacity());
+                            buffer.rewind();
+                            buffer.put(byteArray);
+                            buffer.rewind();
+
+                            console.log('Custom image injected');
+                        } catch (e) {
+                            console.error('Error manipulating image: ' + e.message);
+                        } finally {
+                            image.close();
+                        }
                     }
 
-                    try {
-                        var planes = image.getPlanes();
-                        var buffer = planes[0].getBuffer();
-                        console.log('Image buffer capacity: ' + buffer.capacity());
-
-                        var byteArray = createCustomImageData(buffer.capacity());
-                        
-                        buffer.rewind();
-                        buffer.put(byteArray);
-                        buffer.rewind();
-
-                        console.log('Custom image injected');
-                    } catch (e) {
-                        console.error('Error injecting image: ' + e.message);
-                    } finally {
-                        image.close();
-                    }
-
+                    // Call the original listener
                     listener.onImageAvailable(reader);
                 }
             }
         });
 
+        // Replace the original listener with the custom listener
         this.setOnImageAvailableListener(CustomListener.$new(), handler);
     };
 
     function createCustomImageData(size) {
         var byteArray = Java.array('byte', Array(size).fill(0));
         for (var i = 0; i < size; i++) {
-            byteArray[i] = (i % 256); // Simple grayscale pattern
+            byteArray[i] = 0xFF; // Fill with white pixels for visibility
         }
         console.log('Custom image data created with size: ' + size);
         return byteArray;
