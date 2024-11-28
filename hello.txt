@@ -13,35 +13,44 @@ Java.perform(function () {
                     console.log('Custom listener: New image available');
 
                     var image = reader.acquireLatestImage();
-                    if (image !== null) {
-                        var buffer = image.getPlanes()[0].getBuffer();
+                    if (image === null) {
+                        console.log('No image available to manipulate.');
+                        listener.onImageAvailable(reader);
+                        return;
+                    }
+
+                    try {
+                        var planes = image.getPlanes();
+                        var buffer = planes[0].getBuffer();
+                        console.log('Image buffer capacity: ' + buffer.capacity());
+
                         var byteArray = createCustomImageData(buffer.capacity());
                         
-                        // Overwrite the existing image buffer
                         buffer.rewind();
                         buffer.put(byteArray);
                         buffer.rewind();
 
                         console.log('Custom image injected');
+                    } catch (e) {
+                        console.error('Error injecting image: ' + e.message);
+                    } finally {
                         image.close();
                     }
 
-                    // Call the original listener's functionality to ensure no loss of functionality
                     listener.onImageAvailable(reader);
                 }
             }
         });
 
-        // Replace the original listener with the custom listener
         this.setOnImageAvailableListener(CustomListener.$new(), handler);
     };
 
-    // Helper function to create a custom image data
     function createCustomImageData(size) {
         var byteArray = Java.array('byte', Array(size).fill(0));
         for (var i = 0; i < size; i++) {
-            byteArray[i] = (i % 256); // Simple grayscale pattern, replace with actual image data
+            byteArray[i] = (i % 256); // Simple grayscale pattern
         }
+        console.log('Custom image data created with size: ' + size);
         return byteArray;
     }
 });
