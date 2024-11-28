@@ -1,25 +1,48 @@
 Java.perform(function () {
-    // Hook methods from the older Camera API
-    var Camera = Java.use('android.hardware.Camera');
-    Camera.open.overload().implementation = function () {
-        console.log('Old Camera API used: Camera.open()');
-        return this.open.apply(this, arguments);
-    };
-    Camera.open.overload('int').implementation = function (cameraId) {
-        console.log('Old Camera API used: Camera.open(int)');
-        return this.open.apply(this, arguments);
+    var ImageReader = Java.use('android.media.ImageReader');
+    ImageReader.newInstance.overload('int', 'int', 'int', 'int').implementation = function (width, height, format, maxImages) {
+        console.log('ImageReader created: Width = ' + width + ', Height = ' + height + ', Format = ' + format);
+
+        var reader = this.newInstance(width, height, format, maxImages);
+        var onImageAvailableListener = Java.use('android.media.ImageReader$OnImageAvailableListener');
+        
+        reader.setOnImageAvailableListener.implementation = function (listener, handler) {
+            var CustomListener = onImageAvailableListener.$new({
+                onImageAvailable: function (reader) {
+                    // Log when a new image is available
+                    console.log('New image available');
+
+                    // Get the latest image and its buffer to manipulate
+                    var image = reader.acquireLatestImage();
+                    if (image !== null) {
+                        var buffer = image.getPlanes()[0].getBuffer();
+                        var byteArray = createCustomImageData(buffer.capacity());
+                        
+                        // Overwrite the existing image buffer
+                        buffer.rewind();
+                        buffer.put(byteArray);
+                        buffer.rewind();
+
+                        console.log('Custom image injected');
+                        image.close();
+                    }
+
+                    // Call the original listener after manipulation
+                    listener.onImageAvailable(reader);
+                }
+            });
+            this.setOnImageAvailableListener(CustomListener, handler);
+        };
+        return reader;
     };
 
-    // Hook methods from the newer Camera2 API
-    var CameraManager = Java.use('android.hardware.camera2.CameraManager');
-    CameraManager.openCamera.overload('java.lang.String', 'android.hardware.camera2.CameraDevice$StateCallback', 'android.os.Handler').implementation = function (cameraId, callback, handler) {
-        console.log('Camera2 API used: CameraManager.openCamera()');
-        return this.openCamera.apply(this, arguments);
-    };
-
-    // Hook methods for accessing camera characteristics (common in Camera2 API)
-    CameraManager.getCameraCharacteristics.overload('java.lang.String').implementation = function (cameraId) {
-        console.log('Camera2 API used: CameraManager.getCameraCharacteristics()');
-        return this.getCameraCharacteristics.apply(this, arguments);
-    };
+    // Helper function to create a custom image data
+    function createCustomImageData(size) {
+        var byteArray = Java.array('byte', Array(size).fill(0));
+        for (var i = 0; i < size; i++) {
+            // Replace this with your actual image data filling logic
+            byteArray[i] = (i % 256); // Sample grayscale pattern
+        }
+        return byteArray;
+    }
 });
