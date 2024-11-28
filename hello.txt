@@ -1,45 +1,46 @@
 Java.perform(function () {
     var ImageReader = Java.use('android.media.ImageReader');
-    
+
     ImageReader.setOnImageAvailableListener.implementation = function (listener, handler) {
         console.log('setOnImageAvailableListener called');
 
-        // Create a custom listener to replace the original one
         var Listener = Java.use('android.media.ImageReader$OnImageAvailableListener');
-        var customListener = Listener.$new({
-            onImageAvailable: function (reader) {
-                console.log('Custom listener: New image available');
+        var CustomListener = Java.registerClass({
+            name: 'com.example.CustomImageAvailableListener',
+            implements: [Listener],
+            methods: {
+                onImageAvailable: function (reader) {
+                    console.log('Custom listener: New image available');
 
-                // Get the latest image and its buffer to manipulate
-                var image = reader.acquireLatestImage();
-                if (image !== null) {
-                    var buffer = image.getPlanes()[0].getBuffer();
-                    var byteArray = createCustomImageData(buffer.capacity());
-                    
-                    // Overwrite the existing image buffer
-                    buffer.rewind();
-                    buffer.put(byteArray);
-                    buffer.rewind();
+                    var image = reader.acquireLatestImage();
+                    if (image !== null) {
+                        var buffer = image.getPlanes()[0].getBuffer();
+                        var byteArray = createCustomImageData(buffer.capacity());
+                        
+                        // Overwrite the existing image buffer
+                        buffer.rewind();
+                        buffer.put(byteArray);
+                        buffer.rewind();
 
-                    console.log('Custom image injected');
-                    image.close();
+                        console.log('Custom image injected');
+                        image.close();
+                    }
+
+                    // Call the original listener's functionality to ensure no loss of functionality
+                    listener.onImageAvailable(reader);
                 }
-
-                // Ensure the original listener's functionality is preserved
-                listener.onImageAvailable(reader);
             }
         });
 
-        // Call original method with the custom listener
-        this.setOnImageAvailableListener(customListener, handler);
+        // Replace the original listener with the custom listener
+        this.setOnImageAvailableListener(CustomListener.$new(), handler);
     };
 
     // Helper function to create a custom image data
     function createCustomImageData(size) {
         var byteArray = Java.array('byte', Array(size).fill(0));
         for (var i = 0; i < size; i++) {
-            // Replace this with your actual image data filling logic
-            byteArray[i] = (i % 256); // Sample grayscale pattern
+            byteArray[i] = (i % 256); // Simple grayscale pattern, replace with actual image data
         }
         return byteArray;
     }
